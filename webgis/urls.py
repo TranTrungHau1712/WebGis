@@ -1,10 +1,10 @@
 from django.contrib import admin
 from django.urls import path
-from cuahang.views import ban_do  # Import hàm ban_do vừa viết
+# Sửa dòng này: đổi ban_do thành map_view
+from cuahang.views import map_view 
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    
-    # Đường dẫn trang chủ (trống) sẽ trỏ vào bản đồ
-    path('', ban_do, name='trang_chu'),
+    # Sửa dòng này: gọi hàm map_view
+    path('', map_view, name='map_view'),
 ]

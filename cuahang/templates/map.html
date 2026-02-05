@@ -2,138 +2,139 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hệ thống Chuỗi Cửa Hàng</title>
-    
+    <title>Bản đồ Cửa hàng GIS</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <style>
-        /* Thiết lập chiều cao full màn hình */
-        body, html { height: 100%; margin: 0; overflow: hidden; }
-        
-        /* Cột danh sách bên trái có thanh cuộn */
-        #sidebar {
-            height: calc(100vh - 56px); /* Trừ đi chiều cao Navbar */
-            overflow-y: auto;
-            background-color: #f8f9fa;
-            border-right: 1px solid #ddd;
-        }
-
-        /* Bản đồ bên phải */
-        #map { height: calc(100vh - 56px); width: 100%; }
-
-        /* Hiệu ứng khi di chuột vào danh sách */
+        #map { height: 100vh; width: 100%; }
+        .sidebar { height: 100vh; overflow-y: auto; background: #f8f9fa; border-right: 1px solid #ddd; }
         .shop-item { cursor: pointer; transition: 0.2s; }
         .shop-item:hover { background-color: #e9ecef; }
-        
-        /* Màu chủ đạo */
-        .bg-custom { background-color: #0d6efd; }
     </style>
 </head>
 <body>
 
-    <nav class="navbar navbar-dark bg-custom px-3">
-        <a class="navbar-brand" href="#">
-            🏪 <b>QUẢN LÝ CỬA HÀNG</b>
-        </a>
-        <span class="text-white">Admin: {{ user.username }}</span>
-    </nav>
-
-    <div class="container-fluid">
-        <div class="row">
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-3 sidebar p-3">
+            <h4 class="mb-3 text-primary">🛒 Tìm Quanh Đây</h4>
             
-            <div class="col-md-3 p-0" id="sidebar">
-                <div class="list-group list-group-flush" id="shop-list">
-                    <div class="p-3 text-center text-muted">Đang tải dữ liệu...</div>
+            <div class="card p-3 mb-3 shadow-sm">
+                <form method="GET" action="">
+                    <label class="form-label fw-bold">Nhập bán kính (km):</label>
+                    <div class="input-group mb-2">
+                        <input type="number" step="0.1" name="dist" class="form-control" placeholder="Ví dụ: 2" value="{{ request.GET.dist }}">
+                        <button class="btn btn-primary" type="submit">Tìm</button>
+                    </div>
+                    <small class="text-muted">Mẹo: Nhập số 0 để xem tất cả.</small>
+                    <input type="hidden" name="lat" value="{{ user_lat }}">
+                    <input type="hidden" name="lon" value="{{ user_lon }}">
+                </form>
+            </div>
+
+            <hr>
+            <h5 class="mb-3">Kết quả tìm kiếm:</h5>
+            <div id="shop-list" class="list-group list-group-flush">
                 </div>
-            </div>
+        </div>
 
-            <div class="col-md-9 p-0">
-                <div id="map"></div>
-            </div>
-
+        <div class="col-md-9 p-0">
+            <div id="map"></div>
         </div>
     </div>
+</div>
 
-    <script>
-        // 1. Khởi tạo bản đồ
-        var map = L.map('map').setView([10.776, 106.700], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // 1. Lấy dữ liệu từ Django View truyền sang
+    var userLat = {{ user_lat }};
+    var userLon = {{ user_lon }};
+    var storeData = JSON.parse("{{ data_json|escapejs }}");
+    
+    // Lấy bán kính người dùng nhập (nếu có)
+    var searchRadius = "{{ request.GET.dist }}"; 
+
+    // 2. Khởi tạo bản đồ tại vị trí người dùng
+    var map = L.map('map').setView([userLat, userLon], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    // --- HIỂN THỊ VỊ TRÍ CỦA BẠN (TÂM TÌM KIẾM) ---
+    var userIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34]
+    });
+    L.marker([userLat, userLon], {icon: userIcon}).addTo(map)
+        .bindPopup("<b>Vị trí của bạn</b><br>Tâm tìm kiếm").openPopup();
+
+    // --- VẼ VÒNG TRÒN PHẠM VI TÌM KIẾM (NẾU CÓ NHẬP) ---
+    if (searchRadius && searchRadius > 0) {
+        L.circle([userLat, userLon], {
+            color: 'blue',
+            fillColor: '#30f',
+            fillOpacity: 0.05,
+            radius: searchRadius * 1000 // Đổi km sang mét
         }).addTo(map);
+    }
 
-        // 2. Lấy dữ liệu
-        var storeData = JSON.parse("{{ data_json|escapejs }}");
-        var listContainer = document.getElementById('shop-list');
-        listContainer.innerHTML = ''; 
+    // 3. HIỂN THỊ CÁC CỬA HÀNG (KẾT QUẢ)
+    var listContainer = document.getElementById('shop-list');
+    var currentCircle = null; // Biến nhớ vòng tròn ship của từng quán
 
-        // --- BIẾN QUAN TRỌNG: Lưu trữ vòng tròn đang hiển thị ---
-        var currentCircle = null; 
-
-        // Hàm hỗ trợ: Vẽ vòng tròn mới và xóa vòng tròn cũ
-        function veVongTron(lat, lng, banKinh) {
-            // Nếu đang có vòng tròn nào thì xóa đi
-            if (currentCircle) {
-                map.removeLayer(currentCircle);
-            }
+    L.geoJSON(storeData, {
+        pointToLayer: function (feature, latlng) {
+            // Marker đỏ cho cửa hàng
+            return L.marker(latlng);
+        },
+        onEachFeature: function (feature, layer) {
+            var props = feature.properties;
+            var lat = feature.geometry.coordinates[1];
+            var lng = feature.geometry.coordinates[0];
             
-            // Vẽ vòng tròn mới
-            if (banKinh) {
-                currentCircle = L.circle([lat, lng], {
-                    color: 'red',
-                    fillColor: '#f03',
-                    fillOpacity: 0.1,
-                    radius: banKinh * 1000 // Đổi km sang mét
-                }).addTo(map);
-            }
+            // Tính khoảng cách hiển thị (nếu có trường distance từ backend)
+            // Lưu ý: GeoDjango trả về distance dạng object, ở đây ta lấy đơn giản từ JSON
+            
+            // Popup
+            var content = `<b>${props.ten_quan}</b><br>${props.dia_chi}<br><i>Phạm vi ship: ${props.ban_kinh}km</i>`;
+            layer.bindPopup(content);
+
+            // Xử lý click marker -> vẽ bán kính ship
+            layer.on('click', function() {
+                veVongTronShip(lat, lng, props.ban_kinh);
+            });
+
+            // Thêm vào danh sách bên trái
+            var listItem = document.createElement('a');
+            listItem.className = 'list-group-item list-group-item-action shop-item p-3';
+            listItem.innerHTML = `
+                <h6 class="mb-1 text-danger fw-bold">${props.ten_quan}</h6>
+                <small class="text-muted">🏠 ${props.dia_chi}</small><br>
+                <small class="text-primary">🛵 Ship: ${props.ban_kinh} km</small>
+            `;
+            
+            listItem.onclick = function() {
+                map.flyTo([lat, lng], 15);
+                setTimeout(() => {
+                    layer.openPopup();
+                    veVongTronShip(lat, lng, props.ban_kinh);
+                }, 1000);
+            };
+            listContainer.appendChild(listItem);
         }
+    }).addTo(map);
 
-        // 3. Duyệt qua dữ liệu
-        L.geoJSON(storeData, {
-            pointToLayer: function (feature, latlng) {
-                return L.marker(latlng);
-            },
-            onEachFeature: function (feature, layer) {
-                var props = feature.properties;
-                var lat = feature.geometry.coordinates[1];
-                var lng = feature.geometry.coordinates[0];
-
-                // A. TẠO POPUP
-                var content = `<b>${props.ten_quan}</b><br>${props.dia_chi}<br><i>Ship: ${props.ban_kinh}km</i>`;
-                layer.bindPopup(content);
-
-                // --- B. SỰ KIỆN CLICK VÀO MARKER TRÊN BẢN ĐỒ ---
-                // Khi click vào điểm đỏ -> Vẽ vòng tròn
-                layer.on('click', function() {
-                    veVongTron(lat, lng, props.ban_kinh);
-                });
-
-                // C. TẠO MỤC TRONG DANH SÁCH
-                var listItem = document.createElement('a');
-                listItem.className = 'list-group-item list-group-item-action shop-item p-3';
-                listItem.innerHTML = `
-                    <h5 class="mb-1">${props.ten_quan}</h5>
-                    <small class="text-muted">📍 Bán kính ship: ${props.ban_kinh} km</small>
-                `;
-
-                // --- D. SỰ KIỆN CLICK VÀO DANH SÁCH ---
-                listItem.onclick = function() {
-                    // 1. Bay đến
-                    map.flyTo([lat, lng], 14, { duration: 1.5 });
-                    
-                    // 2. Sau khi bay xong thì mở Popup và VẼ VÒNG TRÒN
-                    setTimeout(() => {
-                        layer.openPopup();
-                        veVongTron(lat, lng, props.ban_kinh); // Gọi hàm vẽ
-                    }, 1500);
-                };
-
-                listContainer.appendChild(listItem);
-            }
-        }).addTo(map);
-    </script>
+    // Hàm vẽ vòng tròn ship riêng của từng quán (màu đỏ)
+    function veVongTronShip(lat, lng, banKinh) {
+        if (currentCircle) map.removeLayer(currentCircle);
+        if (banKinh) {
+            currentCircle = L.circle([lat, lng], {
+                color: 'red', fillColor: '#f03', fillOpacity: 0.1, radius: banKinh * 1000
+            }).addTo(map);
+        }
+    }
+</script>
 </body>
 </html>
